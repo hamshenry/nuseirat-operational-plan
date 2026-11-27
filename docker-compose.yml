@@ -1,0 +1,12 @@
+services:
+  app:
+    build: .
+    container_name: nuseirat-operational-plan
+    restart: unless-stopped
+    ports:
+      - "8000:80"
+    env_file:
+      - .env
+    volumes:
+      - ./database:/var/www/html/database
+      - ./storage/app:/var/www/html/storage/app
