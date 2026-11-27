@@ -5,8 +5,15 @@
 <div class="page-header">
     <div>
         <h2 class="page-title">🗑️ سلة المحذوفات واستعادة البيانات</h2>
-        <p class="page-subtitle">استعراض كافة السجلات المحذوفة مع إمكانية استعادتها بكامل علاقاتها أو حذفها نهائياً</p>
+        <p class="page-subtitle">استعراض كافة السجلات المحذوفة مع إمكانية استعادتها فردياً أو جماعياً أو حذفها نهائياً</p>
     </div>
+    @if(count($items) > 0)
+        <form method="POST" action="{{ route('trash.restore_all') }}" onsubmit="return confirm('استعادة جميع العناصر المعروضة من سلة المحذوفات؟');">
+            @csrf
+            <input type="hidden" name="type" value="{{ $selectedType }}">
+            <button type="submit" class="btn btn-success">↩ استعادة الكل ({{ count($items) }})</button>
+        </form>
+    @endif
 </div>
 
 <!-- Type Filter Pills -->

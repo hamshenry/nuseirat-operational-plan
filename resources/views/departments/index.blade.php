@@ -4,7 +4,7 @@
 @section('content')
 <div class="page-header">
     <div>
-        <h2 class="page-title">إدارة الدوائر البلدية</h2>
+        <h2 class="page-title">🏛️ إدارة الدوائر البلدية</h2>
         <p class="page-subtitle">إضافة الدوائر وإنشاء اسم المستخدم وكلمة المرور الأولية لكل دائرة وإدارة استثناءات فترات الإدخال</p>
     </div>
     <button type="button" class="btn btn-success" onclick="openModal('createDeptModal')">➕ إضافة دائرة جديدة</button>
@@ -20,12 +20,25 @@
                 <th>المدير / المسؤول</th>
                 <th>حسابات الدخول</th>
                 <th class="text-center">الأنشطة</th>
-                <th class="text-center">حالة فترة الإدخال للدائرة</th>
+                <th class="text-center">فترة الإدخال للدائرة</th>
                 <th class="text-center">الإجراءات</th>
             </tr>
             </thead>
             <tbody>
             @forelse($departments as $dept)
+                @php
+                    $deptData = [
+                        'id' => $dept->id,
+                        'code' => $dept->code,
+                        'name' => $dept->name,
+                        'manager_name' => $dept->manager_name ?? '',
+                        'phone' => $dept->phone ?? '',
+                        'email' => $dept->email ?? '',
+                        'description' => $dept->description ?? '',
+                        'entry_override_open' => $dept->entry_override_open,
+                        'entry_override_until' => $dept->entry_override_until?->format('Y-m-d') ?? '',
+                    ];
+                @endphp
                 <tr>
                     <td class="fw-bold"><code>{{ $dept->code }}</code></td>
                     <td>
@@ -41,14 +54,16 @@
                             <div style="margin-bottom:4px;">
                                 <code>{{ $u->username }}</code> ({{ $u->name }})
                                 @if($u->must_change_password)
-                                    <span class="badge badge-warning">ينتظر تغيير كلمة المرور</span>
+                                    <span class="badge badge-warning">تغيير كلمة المرور</span>
                                 @endif
                             </div>
                         @empty
                             <span class="text-muted">لا يوجد حساب بعد</span>
                         @endforelse
                     </td>
-                    <td class="text-center"><span class="badge badge-info">{{ $dept->activities_count }}</span></td>
+                    <td class="text-center">
+                        <a href="{{ route('activities.index', ['department_id' => $dept->id]) }}" class="badge badge-info">{{ $dept->activities_count }} نشاط</a>
+                    </td>
                     <td class="text-center">
                         @if($dept->entry_override_open === true)
                             <span class="badge badge-success">مفتوح استثنائياً {{ $dept->entry_override_until ? 'حتى ' . $dept->entry_override_until->format('Y-m-d') : '' }}</span>
@@ -60,7 +75,11 @@
                     </td>
                     <td class="text-center" style="white-space:nowrap;">
                         <button type="button" class="btn btn-info btn-sm"
-                                onclick='openEditDept(@json($dept))'>تعديل</button>
+                                data-json="{{ json_encode($deptData, JSON_UNESCAPED_UNICODE) }}"
+                                onclick="openEditDept(this)">تعديل</button>
+                        <button type="button" class="btn btn-success btn-sm"
+                                data-dept-id="{{ $dept->id }}" data-dept-name="{{ $dept->name }}"
+                                onclick="openQuickDeptUser(this)">+ مستخدم</button>
                         <form method="POST" action="{{ route('departments.destroy', $dept) }}" style="display:inline;" onsubmit="return confirm('نقل الدائرة «{{ $dept->name }}» إلى سلة المحذوفات؟');">
                             @csrf @method('DELETE')
                             <button type="submit" class="btn btn-soft-danger btn-sm">حذف</button>
@@ -142,6 +161,31 @@
     </div>
 </div>
 
+<!-- Quick Add User For Department Modal -->
+<div class="modal-backdrop" id="quickDeptUserModal">
+    <div class="modal-box" style="max-width:480px;">
+        <div class="modal-header">
+            <h3 class="modal-title">إضافة حساب دخول لدائرة: <span id="qdu_name"></span></h3>
+            <button type="button" class="modal-close" onclick="closeModal('quickDeptUserModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form method="POST" action="{{ route('users.store') }}">
+                @csrf
+                <input type="hidden" name="role" value="department">
+                <input type="hidden" name="department_id" id="qdu_dept_id">
+                <div class="form-group"><label class="form-label">اسم المستخدم *</label><input type="text" name="username" class="form-control" required placeholder="مثال: legal_2"></div>
+                <div class="form-group"><label class="form-label">الاسم الكامل *</label><input type="text" name="name" class="form-control" required></div>
+                <div class="form-group"><label class="form-label">كلمة المرور الأولية *</label><input type="text" name="password" class="form-control" required value="Dept@1234"></div>
+                <div class="form-group"><label><input type="checkbox" name="must_change_password" value="1" checked> إلزام بتغيير كلمة المرور عند أول دخول</label></div>
+                <div class="actions-row">
+                    <button type="submit" class="btn btn-success">إنشاء الحساب</button>
+                    <button type="button" class="btn btn-outline" onclick="closeModal('quickDeptUserModal')">إلغاء</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <!-- Edit Department Modal -->
 <div class="modal-backdrop" id="editDeptModal">
     <div class="modal-box">
@@ -202,7 +246,9 @@
 
 @push('scripts')
 <script>
-function openEditDept(d) {
+function openEditDept(btn) {
+    const d = parseBtnData(btn);
+    if (!d) return;
     document.getElementById('editDeptForm').action = `/departments/${d.id}`;
     document.getElementById('ed_code').value = d.code || '';
     document.getElementById('ed_name').value = d.name || '';
@@ -211,8 +257,13 @@ function openEditDept(d) {
     document.getElementById('ed_email').value = d.email || '';
     document.getElementById('ed_desc').value = d.description || '';
     document.getElementById('ed_override').value = d.entry_override_open === true ? 'open' : (d.entry_override_open === false ? 'closed' : 'inherit');
-    document.getElementById('ed_until').value = d.entry_override_until ? String(d.entry_override_until).substring(0, 10) : '';
+    document.getElementById('ed_until').value = d.entry_override_until || '';
     openModal('editDeptModal');
+}
+function openQuickDeptUser(btn) {
+    document.getElementById('qdu_dept_id').value = btn.dataset.deptId;
+    document.getElementById('qdu_name').textContent = btn.dataset.deptName;
+    openModal('quickDeptUserModal');
 }
 </script>
 @endpush

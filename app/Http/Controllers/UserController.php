@@ -105,6 +105,21 @@ class UserController extends Controller
         return back()->with('success', "تم إعادة تعيين كلمة المرور للمستخدم «{$user->username}» بنجاح.");
     }
 
+    public function toggleActive(User $user): RedirectResponse
+    {
+        if ($user->id === Auth::id()) {
+            return back()->with('error', 'لا يمكنك تعطيل حسابك النشط.');
+        }
+        $next = !$user->is_active;
+        $user->update([
+            'is_active' => $next,
+            'locked_until' => null,
+            'failed_login_attempts' => 0,
+        ]);
+        AuditService::log('update', 'user', $user->id, $user->username, ['is_active' => $next]);
+        return back()->with('success', $next ? "تم تفعيل حساب «{$user->username}» بنجاح." : "تم تعطيل حساب «{$user->username}» بنجاح.");
+    }
+
     public function destroy(User $user): RedirectResponse
     {
         if ($user->id === Auth::id()) {

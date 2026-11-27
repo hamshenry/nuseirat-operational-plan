@@ -4,22 +4,32 @@
 @section('content')
 <div class="page-header">
     <div>
-        <h2 class="page-title">الهيكل الاستراتيجي (الأهداف والبرامج) — عام {{ $year->year }}</h2>
+        <h2 class="page-title">🎯 الهيكل الاستراتيجي (الأهداف والبرامج) — عام {{ $year->year }}</h2>
         <p class="page-subtitle">إدخال وتعديل وحذف الأهداف الرئيسية وتحتها الأهداف الفرعية وتحتها البرامج التي تختار منها الدوائر</p>
     </div>
-    <button type="button" class="btn btn-success" onclick="openModal('addMainModal')">➕ إضافة هدف رئيسي جديد</button>
+    <div class="actions-row">
+        <input type="text" id="treeSearchInput" class="form-control" style="width:230px;" placeholder="🔍 تصفية الشجرة فورياً..." oninput="filterStrategicTree(this.value)">
+        <button type="button" class="btn btn-success" onclick="openModal('addMainModal')">➕ إضافة هدف رئيسي جديد</button>
+    </div>
 </div>
 
 @forelse($mainObjectives as $mo)
-    <div class="tree-main">
+    @php
+        $moData = ['id' => $mo->id, 'code' => $mo->code, 'title' => $mo->title, 'description' => $mo->description ?? ''];
+    @endphp
+    <div class="tree-main" data-tree-text="{{ mb_strtolower($mo->code . ' ' . $mo->title) }}">
         <div class="tree-main-head">
             <div>
                 <span class="badge badge-primary" style="font-size:13px;">هدف رئيسي {{ $mo->code }}</span>
                 <strong style="font-size:16px;margin-right:6px;color:var(--primary);">{{ $mo->title }}</strong>
             </div>
             <div class="actions-row">
-                <button type="button" class="btn btn-success btn-sm" onclick="openAddSub({{ $mo->id }}, @js($mo->code . ' - ' . $mo->title))">+ هدف فرعي</button>
-                <button type="button" class="btn btn-outline btn-sm" onclick='openEditMain(@json($mo))'>تعديل</button>
+                <button type="button" class="btn btn-success btn-sm"
+                        data-id="{{ $mo->id }}" data-label="{{ $mo->code }} — {{ $mo->title }}"
+                        onclick="openAddSub(this)">+ هدف فرعي</button>
+                <button type="button" class="btn btn-outline btn-sm"
+                        data-json="{{ json_encode($moData, JSON_UNESCAPED_UNICODE) }}"
+                        onclick="openEditMain(this)">تعديل</button>
                 <form method="POST" action="{{ route('objectives.main.destroy', $mo) }}" onsubmit="return confirm('نقل الهدف الرئيسي إلى سلة المحذوفات؟');">
                     @csrf @method('DELETE')
                     <button type="submit" class="btn btn-soft-danger btn-sm">حذف</button>
@@ -29,6 +39,9 @@
 
         <div style="padding:4px 0 12px;">
             @forelse($mo->subObjectives as $so)
+                @php
+                    $soData = ['id' => $so->id, 'main_objective_id' => $so->main_objective_id, 'code' => $so->code, 'title' => $so->title, 'description' => $so->description ?? ''];
+                @endphp
                 <div class="tree-sub">
                     <div class="tree-sub-head">
                         <div>
@@ -36,8 +49,12 @@
                             <strong style="margin-right:6px;">{{ $so->title }}</strong>
                         </div>
                         <div class="actions-row">
-                            <button type="button" class="btn btn-primary btn-sm" onclick="openAddProg({{ $so->id }}, @js($so->code . ' - ' . $so->title))">+ برنامج</button>
-                            <button type="button" class="btn btn-outline btn-sm" onclick='openEditSub(@json($so))'>تعديل</button>
+                            <button type="button" class="btn btn-primary btn-sm"
+                                    data-id="{{ $so->id }}" data-label="{{ $so->code }} — {{ $so->title }}"
+                                    onclick="openAddProg(this)">+ برنامج</button>
+                            <button type="button" class="btn btn-outline btn-sm"
+                                    data-json="{{ json_encode($soData, JSON_UNESCAPED_UNICODE) }}"
+                                    onclick="openEditSub(this)">تعديل</button>
                             <form method="POST" action="{{ route('objectives.sub.destroy', $so) }}" onsubmit="return confirm('نقل الهدف الفرعي إلى سلة المحذوفات؟');">
                                 @csrf @method('DELETE')
                                 <button type="submit" class="btn btn-soft-danger btn-sm">حذف</button>
@@ -46,13 +63,18 @@
                     </div>
 
                     @forelse($so->programs as $pr)
+                        @php
+                            $prData = ['id' => $pr->id, 'sub_objective_id' => $pr->sub_objective_id, 'code' => $pr->code, 'title' => $pr->title, 'description' => $pr->description ?? ''];
+                        @endphp
                         <div class="tree-prog">
                             <div>
                                 <span class="badge badge-success">برنامج {{ $pr->code }}</span>
                                 <span style="margin-right:6px;font-weight:600;">{{ $pr->title }}</span>
                             </div>
                             <div class="actions-row">
-                                <button type="button" class="btn btn-outline btn-sm" onclick='openEditProg(@json($pr))'>تعديل</button>
+                                <button type="button" class="btn btn-outline btn-sm"
+                                        data-json="{{ json_encode($prData, JSON_UNESCAPED_UNICODE) }}"
+                                        onclick="openEditProg(this)">تعديل</button>
                                 <form method="POST" action="{{ route('objectives.program.destroy', $pr) }}" onsubmit="return confirm('نقل البرنامج إلى سلة المحذوفات؟');">
                                     @csrf @method('DELETE')
                                     <button type="submit" class="btn btn-soft-danger btn-sm">حذف</button>
@@ -75,7 +97,7 @@
 <!-- Add Main Objective Modal -->
 <div class="modal-backdrop" id="addMainModal">
     <div class="modal-box" style="max-width:520px;">
-        <div class="modal-header"><h3 class="modal-title">إضافة هدف رئيسي جديد ({{ $year->year }})</h3><button class="modal-close" onclick="closeModal('addMainModal')">&times;</button></div>
+        <div class="modal-header"><h3 class="modal-title">إضافة هدف رئيسي جديد ({{ $year->year }})</h3><button type="button" class="modal-close" onclick="closeModal('addMainModal')">&times;</button></div>
         <div class="modal-body">
             <form method="POST" action="{{ route('objectives.main.store') }}">
                 @csrf
@@ -91,7 +113,10 @@
                     <label class="form-label">وصف إضافي</label>
                     <textarea name="description" class="form-control"></textarea>
                 </div>
-                <button type="submit" class="btn btn-success">حفظ الهدف الرئيسي</button>
+                <div class="actions-row">
+                    <button type="submit" class="btn btn-success">حفظ الهدف الرئيسي</button>
+                    <button type="button" class="btn btn-outline" onclick="closeModal('addMainModal')">إلغاء</button>
+                </div>
             </form>
         </div>
     </div>
@@ -100,14 +125,17 @@
 <!-- Edit Main Modal -->
 <div class="modal-backdrop" id="editMainModal">
     <div class="modal-box" style="max-width:520px;">
-        <div class="modal-header"><h3 class="modal-title">تعديل الهدف الرئيسي</h3><button class="modal-close" onclick="closeModal('editMainModal')">&times;</button></div>
+        <div class="modal-header"><h3 class="modal-title">تعديل الهدف الرئيسي</h3><button type="button" class="modal-close" onclick="closeModal('editMainModal')">&times;</button></div>
         <div class="modal-body">
             <form method="POST" id="editMainForm">
                 @csrf @method('PUT')
                 <div class="form-group"><label class="form-label">الرمز *</label><input type="text" name="code" id="em_code" class="form-control" required></div>
                 <div class="form-group"><label class="form-label">العنوان *</label><input type="text" name="title" id="em_title" class="form-control" required></div>
                 <div class="form-group"><label class="form-label">الوصف</label><textarea name="description" id="em_desc" class="form-control"></textarea></div>
-                <button type="submit" class="btn btn-primary">حفظ التعديل</button>
+                <div class="actions-row">
+                    <button type="submit" class="btn btn-primary">حفظ التعديل</button>
+                    <button type="button" class="btn btn-outline" onclick="closeModal('editMainModal')">إلغاء</button>
+                </div>
             </form>
         </div>
     </div>
@@ -116,7 +144,7 @@
 <!-- Add Sub Objective Modal -->
 <div class="modal-backdrop" id="addSubModal">
     <div class="modal-box" style="max-width:520px;">
-        <div class="modal-header"><h3 class="modal-title">إضافة هدف فرعي</h3><button class="modal-close" onclick="closeModal('addSubModal')">&times;</button></div>
+        <div class="modal-header"><h3 class="modal-title">إضافة هدف فرعي</h3><button type="button" class="modal-close" onclick="closeModal('addSubModal')">&times;</button></div>
         <div class="modal-body">
             <p class="text-muted" id="subParentLabel" style="margin-top:0;font-weight:700;"></p>
             <form method="POST" action="{{ route('objectives.sub.store') }}">
@@ -125,7 +153,10 @@
                 <div class="form-group"><label class="form-label">الرمز (يُولّد تلقائياً إذا تُرك فارغاً)</label><input type="text" name="code" class="form-control" placeholder="مثال: 1.3"></div>
                 <div class="form-group"><label class="form-label">عنوان الهدف الفرعي *</label><input type="text" name="title" class="form-control" required></div>
                 <div class="form-group"><label class="form-label">الوصف</label><textarea name="description" class="form-control"></textarea></div>
-                <button type="submit" class="btn btn-success">حفظ الهدف الفرعي</button>
+                <div class="actions-row">
+                    <button type="submit" class="btn btn-success">حفظ الهدف الفرعي</button>
+                    <button type="button" class="btn btn-outline" onclick="closeModal('addSubModal')">إلغاء</button>
+                </div>
             </form>
         </div>
     </div>
@@ -134,7 +165,7 @@
 <!-- Edit Sub Modal -->
 <div class="modal-backdrop" id="editSubModal">
     <div class="modal-box" style="max-width:520px;">
-        <div class="modal-header"><h3 class="modal-title">تعديل الهدف الفرعي</h3><button class="modal-close" onclick="closeModal('editSubModal')">&times;</button></div>
+        <div class="modal-header"><h3 class="modal-title">تعديل الهدف الفرعي</h3><button type="button" class="modal-close" onclick="closeModal('editSubModal')">&times;</button></div>
         <div class="modal-body">
             <form method="POST" id="editSubForm">
                 @csrf @method('PUT')
@@ -142,7 +173,10 @@
                 <div class="form-group"><label class="form-label">الرمز *</label><input type="text" name="code" id="es_code" class="form-control" required></div>
                 <div class="form-group"><label class="form-label">العنوان *</label><input type="text" name="title" id="es_title" class="form-control" required></div>
                 <div class="form-group"><label class="form-label">الوصف</label><textarea name="description" id="es_desc" class="form-control"></textarea></div>
-                <button type="submit" class="btn btn-primary">حفظ التعديل</button>
+                <div class="actions-row">
+                    <button type="submit" class="btn btn-primary">حفظ التعديل</button>
+                    <button type="button" class="btn btn-outline" onclick="closeModal('editSubModal')">إلغاء</button>
+                </div>
             </form>
         </div>
     </div>
@@ -151,7 +185,7 @@
 <!-- Add Program Modal -->
 <div class="modal-backdrop" id="addProgModal">
     <div class="modal-box" style="max-width:520px;">
-        <div class="modal-header"><h3 class="modal-title">إضافة برنامج جديد</h3><button class="modal-close" onclick="closeModal('addProgModal')">&times;</button></div>
+        <div class="modal-header"><h3 class="modal-title">إضافة برنامج جديد</h3><button type="button" class="modal-close" onclick="closeModal('addProgModal')">&times;</button></div>
         <div class="modal-body">
             <p class="text-muted" id="progParentLabel" style="margin-top:0;font-weight:700;"></p>
             <form method="POST" action="{{ route('objectives.program.store') }}">
@@ -160,7 +194,10 @@
                 <div class="form-group"><label class="form-label">الرمز (يُولّد تلقائياً إذا تُرك فارغاً)</label><input type="text" name="code" class="form-control" placeholder="مثال: 1.1.3"></div>
                 <div class="form-group"><label class="form-label">اسم البرنامج *</label><input type="text" name="title" class="form-control" required></div>
                 <div class="form-group"><label class="form-label">الوصف</label><textarea name="description" class="form-control"></textarea></div>
-                <button type="submit" class="btn btn-success">حفظ البرنامج</button>
+                <div class="actions-row">
+                    <button type="submit" class="btn btn-success">حفظ البرنامج</button>
+                    <button type="button" class="btn btn-outline" onclick="closeModal('addProgModal')">إلغاء</button>
+                </div>
             </form>
         </div>
     </div>
@@ -169,7 +206,7 @@
 <!-- Edit Program Modal -->
 <div class="modal-backdrop" id="editProgModal">
     <div class="modal-box" style="max-width:520px;">
-        <div class="modal-header"><h3 class="modal-title">تعديل البرنامج</h3><button class="modal-close" onclick="closeModal('editProgModal')">&times;</button></div>
+        <div class="modal-header"><h3 class="modal-title">تعديل البرنامج</h3><button type="button" class="modal-close" onclick="closeModal('editProgModal')">&times;</button></div>
         <div class="modal-body">
             <form method="POST" id="editProgForm">
                 @csrf @method('PUT')
@@ -177,7 +214,10 @@
                 <div class="form-group"><label class="form-label">الرمز *</label><input type="text" name="code" id="ep_code" class="form-control" required></div>
                 <div class="form-group"><label class="form-label">اسم البرنامج *</label><input type="text" name="title" id="ep_title" class="form-control" required></div>
                 <div class="form-group"><label class="form-label">الوصف</label><textarea name="description" id="ep_desc" class="form-control"></textarea></div>
-                <button type="submit" class="btn btn-primary">حفظ التعديل</button>
+                <div class="actions-row">
+                    <button type="submit" class="btn btn-primary">حفظ التعديل</button>
+                    <button type="button" class="btn btn-outline" onclick="closeModal('editProgModal')">إلغاء</button>
+                </div>
             </form>
         </div>
     </div>
@@ -186,19 +226,23 @@
 
 @push('scripts')
 <script>
-function openEditMain(m) {
+function openEditMain(btn) {
+    const m = parseBtnData(btn);
+    if (!m) return;
     document.getElementById('editMainForm').action = `/objectives/main/${m.id}`;
     document.getElementById('em_code').value = m.code || '';
     document.getElementById('em_title').value = m.title || '';
     document.getElementById('em_desc').value = m.description || '';
     openModal('editMainModal');
 }
-function openAddSub(mainId, label) {
-    document.getElementById('sub_main_id').value = mainId;
-    document.getElementById('subParentLabel').textContent = 'تحت الهدف الرئيسي: ' + label;
+function openAddSub(btn) {
+    document.getElementById('sub_main_id').value = btn.dataset.id;
+    document.getElementById('subParentLabel').textContent = 'تحت الهدف الرئيسي: ' + (btn.dataset.label || '');
     openModal('addSubModal');
 }
-function openEditSub(s) {
+function openEditSub(btn) {
+    const s = parseBtnData(btn);
+    if (!s) return;
     document.getElementById('editSubForm').action = `/objectives/sub/${s.id}`;
     document.getElementById('es_main_id').value = s.main_objective_id;
     document.getElementById('es_code').value = s.code || '';
@@ -206,18 +250,26 @@ function openEditSub(s) {
     document.getElementById('es_desc').value = s.description || '';
     openModal('editSubModal');
 }
-function openAddProg(subId, label) {
-    document.getElementById('prog_sub_id').value = subId;
-    document.getElementById('progParentLabel').textContent = 'تحت الهدف الفرعي: ' + label;
+function openAddProg(btn) {
+    document.getElementById('prog_sub_id').value = btn.dataset.id;
+    document.getElementById('progParentLabel').textContent = 'تحت الهدف الفرعي: ' + (btn.dataset.label || '');
     openModal('addProgModal');
 }
-function openEditProg(p) {
+function openEditProg(btn) {
+    const p = parseBtnData(btn);
+    if (!p) return;
     document.getElementById('editProgForm').action = `/objectives/program/${p.id}`;
     document.getElementById('ep_sub_id').value = p.sub_objective_id;
     document.getElementById('ep_code').value = p.code || '';
     document.getElementById('ep_title').value = p.title || '';
     document.getElementById('ep_desc').value = p.description || '';
     openModal('editProgModal');
+}
+function filterStrategicTree(q) {
+    const kw = (q || '').trim().toLowerCase();
+    document.querySelectorAll('.tree-main').forEach(box => {
+        box.style.display = (!kw || box.textContent.toLowerCase().includes(kw)) ? '' : 'none';
+    });
 }
 </script>
 @endpush

@@ -28,6 +28,16 @@
             </thead>
             <tbody>
             @foreach($years as $y)
+                @php
+                    $yData = [
+                        'id' => $y->id,
+                        'title' => $y->title,
+                        'entry_start_date' => $y->entry_start_date?->format('Y-m-d') ?? '',
+                        'entry_end_date' => $y->entry_end_date?->format('Y-m-d') ?? '',
+                        'notes' => $y->notes ?? '',
+                        'is_entry_open' => (bool) $y->is_entry_open,
+                    ];
+                @endphp
                 <tr>
                     <td class="fw-bold" style="font-size:17px;color:var(--primary);">{{ $y->year }}</td>
                     <td>
@@ -65,7 +75,9 @@
                                 {{ $y->is_entry_open ? '🔒 إغلاق الفترة' : '🔓 فتح الفترة' }}
                             </button>
                         </form>
-                        <button type="button" class="btn btn-info btn-sm" onclick='openEditYear(@json($y))'>تعديل التواريخ</button>
+                        <button type="button" class="btn btn-info btn-sm"
+                                data-json="{{ json_encode($yData, JSON_UNESCAPED_UNICODE) }}"
+                                onclick="openEditYear(this)">تعديل التواريخ</button>
                         @if(!$y->is_active)
                             <form method="POST" action="{{ route('years.destroy', $y) }}" style="display:inline;" onsubmit="return confirm('نقل السنة {{ $y->year }} إلى سلة المحذوفات؟');">
                                 @csrf @method('DELETE')
@@ -83,7 +95,7 @@
 <!-- Create Year Modal -->
 <div class="modal-backdrop" id="createYearModal">
     <div class="modal-box">
-        <div class="modal-header"><h3 class="modal-title">إضافة سنة تخطيطية جديدة</h3><button class="modal-close" onclick="closeModal('createYearModal')">&times;</button></div>
+        <div class="modal-header"><h3 class="modal-title">إضافة سنة تخطيطية جديدة</h3><button type="button" class="modal-close" onclick="closeModal('createYearModal')">&times;</button></div>
         <div class="modal-body">
             <form method="POST" action="{{ route('years.store') }}">
                 @csrf
@@ -96,7 +108,10 @@
                     <div class="form-group"><label><input type="checkbox" name="is_entry_open" value="1" checked> فتح فترة الإدخال مباشرة</label></div>
                     <div class="form-group"><label><input type="checkbox" name="set_active" value="1"> تعيينها كالسنة النشطة الحالية</label></div>
                 </div>
-                <button type="submit" class="btn btn-success">إنشاء السنة</button>
+                <div class="actions-row">
+                    <button type="submit" class="btn btn-success">إنشاء السنة</button>
+                    <button type="button" class="btn btn-outline" onclick="closeModal('createYearModal')">إلغاء</button>
+                </div>
             </form>
         </div>
     </div>
@@ -105,7 +120,7 @@
 <!-- Edit Year Modal -->
 <div class="modal-backdrop" id="editYearModal">
     <div class="modal-box">
-        <div class="modal-header"><h3 class="modal-title">تعديل إعدادات وتواريخ السنة التخطيطية</h3><button class="modal-close" onclick="closeModal('editYearModal')">&times;</button></div>
+        <div class="modal-header"><h3 class="modal-title">تعديل إعدادات وتواريخ السنة التخطيطية</h3><button type="button" class="modal-close" onclick="closeModal('editYearModal')">&times;</button></div>
         <div class="modal-body">
             <form method="POST" id="editYearForm">
                 @csrf @method('PUT')
@@ -116,7 +131,10 @@
                     <div class="form-group form-full"><label class="form-label">ملاحظات</label><textarea name="notes" id="ey_notes" class="form-control"></textarea></div>
                     <div class="form-group form-full"><label><input type="checkbox" name="is_entry_open" id="ey_open" value="1"> فترة إدخال الخطط مفتوحة</label></div>
                 </div>
-                <button type="submit" class="btn btn-primary">حفظ الإعدادات</button>
+                <div class="actions-row">
+                    <button type="submit" class="btn btn-primary">حفظ الإعدادات</button>
+                    <button type="button" class="btn btn-outline" onclick="closeModal('editYearModal')">إلغاء</button>
+                </div>
             </form>
         </div>
     </div>
@@ -125,7 +143,7 @@
 <!-- Clone Previous Year Plan Modal -->
 <div class="modal-backdrop" id="cloneYearModal">
     <div class="modal-box">
-        <div class="modal-header"><h3 class="modal-title">📋 نسخ خطة سنة سابقة إلى سنة جديدة</h3><button class="modal-close" onclick="closeModal('cloneYearModal')">&times;</button></div>
+        <div class="modal-header"><h3 class="modal-title">📋 نسخ خطة سنة سابقة إلى سنة جديدة</h3><button type="button" class="modal-close" onclick="closeModal('cloneYearModal')">&times;</button></div>
         <div class="modal-body">
             <form method="POST" action="{{ route('years.clone') }}">
                 @csrf
@@ -160,7 +178,10 @@
                         <label style="display:block;"><input type="checkbox" name="clone_budgets" value="1" checked> نسخ مخصصات الموازنات المعتمدة للدوائر</label>
                     </div>
                 </div>
-                <button type="submit" class="btn btn-primary">🚀 تنفيذ النسخ الآن</button>
+                <div class="actions-row">
+                    <button type="submit" class="btn btn-primary">🚀 تنفيذ النسخ الآن</button>
+                    <button type="button" class="btn btn-outline" onclick="closeModal('cloneYearModal')">إلغاء</button>
+                </div>
             </form>
         </div>
     </div>
@@ -169,11 +190,13 @@
 
 @push('scripts')
 <script>
-function openEditYear(y) {
+function openEditYear(btn) {
+    const y = parseBtnData(btn);
+    if (!y) return;
     document.getElementById('editYearForm').action = `/years/${y.id}`;
     document.getElementById('ey_title').value = y.title || '';
-    document.getElementById('ey_start').value = y.entry_start_date ? String(y.entry_start_date).substring(0, 10) : '';
-    document.getElementById('ey_end').value = y.entry_end_date ? String(y.entry_end_date).substring(0, 10) : '';
+    document.getElementById('ey_start').value = y.entry_start_date || '';
+    document.getElementById('ey_end').value = y.entry_end_date || '';
     document.getElementById('ey_notes').value = y.notes || '';
     document.getElementById('ey_open').checked = !!y.is_entry_open;
     openModal('editYearModal');

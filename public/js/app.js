@@ -1,13 +1,33 @@
-/* بلدية النصيرات — نظام إدارة الخطة التشغيلية */
+/* بلدية النصيرات — نظام إدارة الخطة التشغيلية (Enhanced Bulletproof JS) */
 
 function openModal(id) {
     const el = document.getElementById(id);
-    if (el) el.classList.add('open');
+    if (!el) return;
+    el.classList.add('open');
+    const firstInput = el.querySelector('input:not([type="hidden"]), select, textarea');
+    if (firstInput) {
+        setTimeout(() => firstInput.focus(), 60);
+    }
 }
 
 function closeModal(id) {
     const el = document.getElementById(id);
     if (el) el.classList.remove('open');
+}
+
+function closeAllModals() {
+    document.querySelectorAll('.modal-backdrop.open').forEach(m => m.classList.remove('open'));
+}
+
+/* Safe JSON decoder from data-json attribute (never breaks on quotes/Arabic/newlines) */
+function parseBtnData(btn, attr = 'json') {
+    if (!btn || !btn.dataset || !btn.dataset[attr]) return null;
+    try {
+        return JSON.parse(btn.dataset[attr]);
+    } catch (e) {
+        console.error('JSON parse error on button data-' + attr, e);
+        return null;
+    }
 }
 
 document.addEventListener('click', function (e) {
@@ -18,6 +38,14 @@ document.addEventListener('click', function (e) {
     const notifDrop = document.getElementById('notifDropdown');
     if (notifDrop && notifWrap && !notifWrap.contains(e.target)) {
         notifDrop.classList.remove('open');
+    }
+});
+
+document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+        closeAllModals();
+        const notifDrop = document.getElementById('notifDropdown');
+        if (notifDrop) notifDrop.classList.remove('open');
     }
 });
 
@@ -97,7 +125,7 @@ async function loadPrograms(subId, progSelectId, selectedProgId = null) {
     }
 }
 
-/* Bulk Selection for Batch Approval / Rejection / Submission */
+/* Bulk Selection for Batch Approval / Rejection / Submission (with Modal instead of prompt!) */
 function initBulkSelection() {
     const master = document.getElementById('selectAllActivities');
     const bar = document.getElementById('bulkActionBar');
@@ -108,6 +136,8 @@ function initBulkSelection() {
         const checked = document.querySelectorAll('.activity-checkbox:checked');
         if (countEl) countEl.textContent = checked.length;
         bar.classList.toggle('visible', checked.length > 0);
+        const all = document.querySelectorAll('.activity-checkbox');
+        master.checked = all.length > 0 && checked.length === all.length;
     };
 
     master.addEventListener('change', () => {
@@ -122,9 +152,7 @@ function initBulkSelection() {
     });
 }
 
-function submitBatchForm(action) {
-    const form = document.getElementById('batchActionForm');
-    if (!form) return;
+function openBatchModal(action) {
     const checked = document.querySelectorAll('.activity-checkbox:checked');
     if (!checked.length) {
         alert('يرجى تحديد نشاط واحد على الأقل.');
@@ -133,24 +161,67 @@ function submitBatchForm(action) {
 
     const actionInput = document.getElementById('batchActionType');
     const noteInput = document.getElementById('batchActionNote');
+    const form = document.getElementById('batchActionForm');
 
-    if (action === 'reject') {
-        const reason = prompt('يرجى إدخال سبب رفض الأنشطة المحددة (إلزامي):');
-        if (!reason || reason.trim().length < 5) {
-            alert('يجب إدخال سبب واضح لا يقل عن 5 أحرف.');
-            return;
-        }
-        noteInput.value = reason.trim();
-    } else if (action === 'approve') {
-        const note = prompt('ملاحظة اعتماد جماعي (اختياري):', 'اعتماد جماعي من قبل المشرف العام.');
-        if (note === null) return;
-        noteInput.value = note.trim();
-    } else if (action === 'delete') {
+    if (action === 'submit') {
+        if (!confirm(`إرسال ${checked.length} نشاط محدد للمشرف العام للمراجعة والاعتماد؟`)) return;
+        actionInput.value = 'submit';
+        noteInput.value = '';
+        form.submit();
+        return;
+    }
+    if (action === 'delete') {
         if (!confirm(`هل أنت متأكد من نقل ${checked.length} نشاط إلى سلة المحذوفات؟`)) return;
+        actionInput.value = 'delete';
+        noteInput.value = '';
+        form.submit();
+        return;
     }
 
-    actionInput.value = action;
-    form.submit();
+    // Open rich modal for batch approve / batch reject
+    const modal = document.getElementById('batchDecisionModal');
+    if (!modal) return;
+    const titleEl = document.getElementById('batchModalTitle');
+    const labelEl = document.getElementById('batchModalLabel');
+    const textarea = document.getElementById('batchModalTextarea');
+    const submitBtn = document.getElementById('batchModalConfirmBtn');
+
+    modal.dataset.pendingAction = action;
+    if (action === 'approve') {
+        titleEl.textContent = `✅ اعتماد جماعي لعدد (${checked.length}) نشاط`;
+        labelEl.textContent = 'ملاحظة الاعتماد الجماعي (اختياري)';
+        textarea.required = false;
+        textarea.value = 'تمت المراجعة والاعتماد دفعة واحدة.';
+        submitBtn.className = 'btn btn-success';
+        submitBtn.textContent = `تأكيد اعتماد ${checked.length} نشاط`;
+    } else {
+        titleEl.textContent = `❌ رفض جماعي لعدد (${checked.length}) نشاط مع بيان السبب`;
+        labelEl.textContent = 'سبب الرفض والتعديلات المطلوبة (إلزامي — 5 أحرف على الأقل) *';
+        textarea.required = true;
+        textarea.value = '';
+        textarea.placeholder = 'اكتب سبب الرفض بوضوح ليتم إشعار الدوائر...';
+        submitBtn.className = 'btn btn-danger';
+        submitBtn.textContent = `تأكيد رفض ${checked.length} نشاط`;
+    }
+    openModal('batchDecisionModal');
+}
+
+function confirmBatchModal() {
+    const modal = document.getElementById('batchDecisionModal');
+    const action = modal?.dataset.pendingAction;
+    const textarea = document.getElementById('batchModalTextarea');
+    const val = (textarea?.value || '').trim();
+
+    if (action === 'reject' && val.length < 5) {
+        alert('يرجى كتابة سبب واضح للرفض (5 أحرف على الأقل).');
+        textarea?.focus();
+        return;
+    }
+
+    document.getElementById('batchActionType').value = action;
+    document.getElementById('batchActionNote').value = val;
+    closeModal('batchDecisionModal');
+    document.getElementById('batchActionForm').submit();
 }
 
 function toggleSupportFields() {

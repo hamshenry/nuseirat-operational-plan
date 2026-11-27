@@ -8,7 +8,7 @@
         <p class="page-subtitle">رصد وتحليل المخاطر التشغيلية والمالية والتقنية وفق مصفوفة (الاحتمالية × الأثر) وخطط المعالجة</p>
     </div>
     <div class="actions-row">
-        <button type="button" class="btn btn-success" onclick="openModal('createRiskModal')">➕ تسجيل خطر / معوق</button>
+        <button type="button" class="btn btn-success" onclick="openModal('createRiskModal'); updateRiskPreview('cr');">➕ تسجيل خطر / معوق</button>
         <a href="{{ route('reports.excel', 'risks') }}" class="btn btn-primary">📥 Excel</a>
         <a href="{{ route('reports.pdf', 'risks') }}" class="btn btn-outline">📄 PDF</a>
     </div>
@@ -33,10 +33,12 @@
                         @for($i = 1; $i <= 5; $i++)
                             @php
                                 $sc = $l * $i;
-                                $cls = $sc >= 16 ? 'rm-critical' : ($sc >= 10 ? 'rm-high' : ($sc >= 5 ? 'rm-medium' : 'rm-low'));
+                                $sev = $sc >= 16 ? 'critical' : ($sc >= 10 ? 'high' : ($sc >= 5 ? 'medium' : 'low'));
+                                $cls = 'rm-' . $sev;
                                 $cnt = $matrix[$l][$i] ?? 0;
                             @endphp
-                            <td class="{{ $cls }}">
+                            <td class="{{ $cls }}" style="cursor:{{ $cnt > 0 ? 'pointer' : 'default' }};"
+                                @if($cnt > 0) onclick="window.location='{{ route('risks.index', ['severity' => $sev]) }}'" title="اضغط للتصفية حسب مستوى الخطورة" @endif>
                                 {{ $cnt > 0 ? $cnt . ' خطر' : '—' }}
                                 <div style="font-size:10px;opacity:0.7;">({{ $sc }})</div>
                             </td>
@@ -105,11 +107,25 @@
                 <th>خطة المعالجة والتخفيف</th>
                 <th>المسؤول</th>
                 <th class="text-center">الحالة</th>
-                <th class="text-center">الإجراءات</th>
+                <th class="text-center sticky-action">الإجراءات</th>
             </tr>
             </thead>
             <tbody>
             @forelse($risks as $r)
+                @php
+                    $rData = [
+                        'id' => $r->id,
+                        'activity_id' => $r->activity_id,
+                        'title' => $r->title,
+                        'description' => $r->description ?? '',
+                        'category' => $r->category,
+                        'status' => $r->status,
+                        'likelihood' => $r->likelihood,
+                        'impact' => $r->impact,
+                        'mitigation_plan' => $r->mitigation_plan ?? '',
+                        'owner_name' => $r->owner_name ?? '',
+                    ];
+                @endphp
                 <tr>
                     <td style="min-width:200px;">
                         <div class="fw-bold">{{ $r->title }}</div>
@@ -131,8 +147,10 @@
                     <td style="min-width:210px;font-size:13px;">{{ $r->mitigation_plan ?: '—' }}</td>
                     <td>{{ $r->owner_name ?: '—' }}</td>
                     <td class="text-center"><span class="badge badge-info">{{ $r->statusLabel() }}</span></td>
-                    <td class="text-center" style="white-space:nowrap;">
-                        <button type="button" class="btn btn-info btn-sm" onclick='openEditRisk(@json($r))'>تعديل</button>
+                    <td class="text-center sticky-action" style="white-space:nowrap;">
+                        <button type="button" class="btn btn-info btn-sm"
+                                data-json="{{ json_encode($rData, JSON_UNESCAPED_UNICODE) }}"
+                                onclick="openEditRisk(this)">تعديل</button>
                         <form method="POST" action="{{ route('risks.destroy', $r) }}" style="display:inline;" onsubmit="return confirm('نقل الخطر إلى سلة المحذوفات؟');">
                             @csrf @method('DELETE')
                             <button type="submit" class="btn btn-soft-danger btn-sm">حذف</button>
@@ -150,7 +168,7 @@
 <!-- Create Risk Modal -->
 <div class="modal-backdrop" id="createRiskModal">
     <div class="modal-box">
-        <div class="modal-header"><h3 class="modal-title">تسجيل خطر أو معوق جديد</h3><button class="modal-close" onclick="closeModal('createRiskModal')">&times;</button></div>
+        <div class="modal-header"><h3 class="modal-title">تسجيل خطر أو معوق جديد</h3><button type="button" class="modal-close" onclick="closeModal('createRiskModal')">&times;</button></div>
         <div class="modal-body">
             <form method="POST" action="{{ route('risks.store') }}">
                 @csrf
@@ -203,11 +221,14 @@
                     </div>
                     <div class="form-group">
                         <label class="form-label">الاحتمالية (1 إلى 5) *</label>
-                        <input type="number" min="1" max="5" name="likelihood" class="form-control" required value="3">
+                        <input type="number" min="1" max="5" name="likelihood" id="cr_lik" class="form-control" required value="3" oninput="updateRiskPreview('cr')">
                     </div>
                     <div class="form-group">
                         <label class="form-label">شدة الأثر (1 إلى 5) *</label>
-                        <input type="number" min="1" max="5" name="impact" class="form-control" required value="3">
+                        <input type="number" min="1" max="5" name="impact" id="cr_imp" class="form-control" required value="3" oninput="updateRiskPreview('cr')">
+                    </div>
+                    <div class="form-group form-full">
+                        <div id="cr_preview" class="badge badge-info" style="font-size:13px;padding:6px 12px;">تقييم الخطورة: 9 / 25 (متوسط)</div>
                     </div>
                     <div class="form-group form-full">
                         <label class="form-label">خطة المعالجة والتخفيف</label>
@@ -218,7 +239,10 @@
                         <input type="text" name="owner_name" class="form-control">
                     </div>
                 </div>
-                <button type="submit" class="btn btn-success">حفظ الخطر في السجل</button>
+                <div class="actions-row">
+                    <button type="submit" class="btn btn-success">حفظ الخطر في السجل</button>
+                    <button type="button" class="btn btn-outline" onclick="closeModal('createRiskModal')">إلغاء</button>
+                </div>
             </form>
         </div>
     </div>
@@ -227,11 +251,20 @@
 <!-- Edit Risk Modal -->
 <div class="modal-backdrop" id="editRiskModal">
     <div class="modal-box">
-        <div class="modal-header"><h3 class="modal-title">تعديل بيانات الخطر / المعوق</h3><button class="modal-close" onclick="closeModal('editRiskModal')">&times;</button></div>
+        <div class="modal-header"><h3 class="modal-title">تعديل بيانات الخطر / المعوق</h3><button type="button" class="modal-close" onclick="closeModal('editRiskModal')">&times;</button></div>
         <div class="modal-body">
             <form method="POST" id="editRiskForm">
                 @csrf @method('PUT')
                 <div class="form-grid">
+                    <div class="form-group form-full">
+                        <label class="form-label">النشاط المرتبط</label>
+                        <select name="activity_id" id="er_act" class="form-select">
+                            <option value="">خطر عام على مستوى الدائرة</option>
+                            @foreach($activities as $a)
+                                <option value="{{ $a->id }}">{{ $a->activity_code }} — {{ \Illuminate\Support\Str::limit($a->title, 45) }}</option>
+                            @endforeach
+                        </select>
+                    </div>
                     <div class="form-group form-full"><label class="form-label">العنوان *</label><input type="text" name="title" id="er_title" class="form-control" required></div>
                     <div class="form-group form-full"><label class="form-label">الوصف</label><textarea name="description" id="er_desc" class="form-control"></textarea></div>
                     <div class="form-group">
@@ -248,12 +281,16 @@
                             <option value="escalated">مصعّد للإدارة</option><option value="resolved">تم الحل</option>
                         </select>
                     </div>
-                    <div class="form-group"><label class="form-label">الاحتمالية (1-5)</label><input type="number" min="1" max="5" name="likelihood" id="er_lik" class="form-control" required></div>
-                    <div class="form-group"><label class="form-label">الأثر (1-5)</label><input type="number" min="1" max="5" name="impact" id="er_imp" class="form-control" required></div>
+                    <div class="form-group"><label class="form-label">الاحتمالية (1-5)</label><input type="number" min="1" max="5" name="likelihood" id="er_lik" class="form-control" required oninput="updateRiskPreview('er')"></div>
+                    <div class="form-group"><label class="form-label">الأثر (1-5)</label><input type="number" min="1" max="5" name="impact" id="er_imp" class="form-control" required oninput="updateRiskPreview('er')"></div>
+                    <div class="form-group form-full"><div id="er_preview" class="badge badge-info" style="font-size:13px;padding:6px 12px;"></div></div>
                     <div class="form-group form-full"><label class="form-label">خطة المعالجة</label><textarea name="mitigation_plan" id="er_mit" class="form-control"></textarea></div>
                     <div class="form-group form-full"><label class="form-label">المسؤول</label><input type="text" name="owner_name" id="er_owner" class="form-control"></div>
                 </div>
-                <button type="submit" class="btn btn-primary">حفظ التعديل</button>
+                <div class="actions-row">
+                    <button type="submit" class="btn btn-primary">حفظ التعديل</button>
+                    <button type="button" class="btn btn-outline" onclick="closeModal('editRiskModal')">إلغاء</button>
+                </div>
             </form>
         </div>
     </div>
@@ -262,8 +299,24 @@
 
 @push('scripts')
 <script>
-function openEditRisk(r) {
+function updateRiskPreview(prefix) {
+    const l = Math.max(1, Math.min(5, parseInt(document.getElementById(prefix + '_lik')?.value || 3, 10)));
+    const i = Math.max(1, Math.min(5, parseInt(document.getElementById(prefix + '_imp')?.value || 3, 10)));
+    const sc = l * i;
+    const el = document.getElementById(prefix + '_preview');
+    if (!el) return;
+    let label = 'منخفض', cls = 'badge-success';
+    if (sc >= 16) { label = 'حرج'; cls = 'badge-danger'; }
+    else if (sc >= 10) { label = 'مرتفع'; cls = 'badge-warning'; }
+    else if (sc >= 5) { label = 'متوسط'; cls = 'badge-info'; }
+    el.className = 'badge ' + cls;
+    el.textContent = `تقييم الخطورة التلقائي: ${sc} / 25 (${label})`;
+}
+function openEditRisk(btn) {
+    const r = parseBtnData(btn);
+    if (!r) return;
     document.getElementById('editRiskForm').action = `/risks/${r.id}`;
+    document.getElementById('er_act').value = r.activity_id || '';
     document.getElementById('er_title').value = r.title || '';
     document.getElementById('er_desc').value = r.description || '';
     document.getElementById('er_cat').value = r.category || 'administrative';
@@ -272,6 +325,7 @@ function openEditRisk(r) {
     document.getElementById('er_imp').value = r.impact || 3;
     document.getElementById('er_mit').value = r.mitigation_plan || '';
     document.getElementById('er_owner').value = r.owner_name || '';
+    updateRiskPreview('er');
     openModal('editRiskModal');
 }
 </script>

@@ -5,9 +5,9 @@
 <div class="page-header">
     <div>
         <h2 class="page-title">✉️ المراسلات الداخلية بين المشرف العام والدوائر</h2>
-        <p class="page-subtitle">تبادل التوجيهات والاستفسارات والمذكرات الداخلية داخل النظام مع تأكيد القراءة</p>
+        <p class="page-subtitle">تبادل التوجيهات والتعاميم والاستفسارات الداخلية مع تأكيد القراءة والرد المباشر</p>
     </div>
-    <button type="button" class="btn btn-success" onclick="openModal('composeMsgModal')">✍️ رسالة جديدة</button>
+    <button type="button" class="btn btn-success" onclick="openComposeNew()">✍️ رسالة / تعميم جديد</button>
 </div>
 
 <div class="actions-row" style="margin-bottom:16px;">
@@ -19,6 +19,14 @@
     <div class="card-body">
         @php $list = $tab === 'sent' ? $sent : $inbox; @endphp
         @forelse($list as $msg)
+            @php
+                $replyData = [
+                    'parent_id' => $msg->id,
+                    'subject' => str_starts_with($msg->subject, 'رد:') ? $msg->subject : ('رد: ' . $msg->subject),
+                    'sender_dept_id' => $msg->sender?->department_id,
+                    'sender_user_id' => $msg->sender_id,
+                ];
+            @endphp
             <div style="padding:15px;border:1px solid var(--border);border-right:4px solid {{ (!$msg->is_read && $tab === 'inbox') ? '#0284c7' : '#cbd5e1' }};border-radius:11px;margin-bottom:12px;background:{{ (!$msg->is_read && $tab === 'inbox') ? '#f0f9ff' : '#ffffff' }};">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">
                     <div>
@@ -39,11 +47,16 @@
                         </div>
                     </div>
                     <div class="actions-row">
-                        @if($tab === 'inbox' && !$msg->is_read)
-                            <form method="POST" action="{{ route('messages.read', $msg) }}">
-                                @csrf
-                                <button type="submit" class="btn btn-outline btn-sm">✓ تعليم كمقروءة</button>
-                            </form>
+                        @if($tab === 'inbox')
+                            <button type="button" class="btn btn-primary btn-sm"
+                                    data-json="{{ json_encode($replyData, JSON_UNESCAPED_UNICODE) }}"
+                                    onclick="openReplyMessage(this)">↩ رد</button>
+                            @if(!$msg->is_read)
+                                <form method="POST" action="{{ route('messages.read', $msg) }}">
+                                    @csrf
+                                    <button type="submit" class="btn btn-outline btn-sm">✓ تعليم كمقروءة</button>
+                                </form>
+                            @endif
                         @endif
                         <form method="POST" action="{{ route('messages.destroy', $msg) }}" onsubmit="return confirm('نقل الرسالة إلى سلة المحذوفات؟');">
                             @csrf @method('DELETE')
@@ -59,18 +72,20 @@
     </div>
 </div>
 
-<!-- Compose Message Modal -->
+<!-- Compose / Reply Message Modal -->
 <div class="modal-backdrop" id="composeMsgModal">
     <div class="modal-box">
-        <div class="modal-header"><h3 class="modal-title">إرسال رسالة داخلية جديدة</h3><button class="modal-close" onclick="closeModal('composeMsgModal')">&times;</button></div>
+        <div class="modal-header"><h3 class="modal-title" id="msgModalTitle">إرسال رسالة داخلية جديدة</h3><button type="button" class="modal-close" onclick="closeModal('composeMsgModal')">&times;</button></div>
         <div class="modal-body">
             <form method="POST" action="{{ route('messages.store') }}">
                 @csrf
+                <input type="hidden" name="parent_message_id" id="msg_parent_id">
                 @if(auth()->user()->isAdmin())
                     <div class="form-group">
                         <label class="form-label">إرسال إلى الدائرة *</label>
-                        <select name="recipient_department_id" class="form-select" required>
+                        <select name="recipient_department_id" id="msg_dept_sel" class="form-select" required>
                             <option value="">-- اختر الدائرة المستلمة --</option>
+                            <option value="all">📢 تعميم لجميع الدوائر البلدية</option>
                             @foreach($departments as $d)
                                 <option value="{{ $d->id }}">{{ $d->code }} — {{ $d->name }}</option>
                             @endforeach
@@ -79,7 +94,7 @@
                 @else
                     <div class="form-group">
                         <label class="form-label">المستلم</label>
-                        <select name="recipient_user_id" class="form-select">
+                        <select name="recipient_user_id" id="msg_user_sel" class="form-select">
                             @foreach($admins as $adm)
                                 <option value="{{ $adm->id }}">{{ $adm->name }} (المشرف العام)</option>
                             @endforeach
@@ -88,15 +103,43 @@
                 @endif
                 <div class="form-group">
                     <label class="form-label">موضوع الرسالة *</label>
-                    <input type="text" name="subject" class="form-control" required>
+                    <input type="text" name="subject" id="msg_subject" class="form-control" required>
                 </div>
                 <div class="form-group">
                     <label class="form-label">نص الرسالة *</label>
-                    <textarea name="body" class="form-control" style="min-height:120px;" required></textarea>
+                    <textarea name="body" id="msg_body" class="form-control" style="min-height:120px;" required></textarea>
                 </div>
-                <button type="submit" class="btn btn-success">📤 إرسال الرسالة</button>
+                <div class="actions-row">
+                    <button type="submit" class="btn btn-success">📤 إرسال الرسالة</button>
+                    <button type="button" class="btn btn-outline" onclick="closeModal('composeMsgModal')">إلغاء</button>
+                </div>
             </form>
         </div>
     </div>
 </div>
 @endsection
+
+@push('scripts')
+<script>
+function openComposeNew() {
+    document.getElementById('msgModalTitle').textContent = 'إرسال رسالة داخلية / تعميم جديد';
+    document.getElementById('msg_parent_id').value = '';
+    document.getElementById('msg_subject').value = '';
+    document.getElementById('msg_body').value = '';
+    openModal('composeMsgModal');
+}
+function openReplyMessage(btn) {
+    const r = parseBtnData(btn);
+    if (!r) return;
+    document.getElementById('msgModalTitle').textContent = '↩ الرد على الرسالة';
+    document.getElementById('msg_parent_id').value = r.parent_id || '';
+    document.getElementById('msg_subject').value = r.subject || '';
+    document.getElementById('msg_body').value = '';
+    const deptSel = document.getElementById('msg_dept_sel');
+    if (deptSel && r.sender_dept_id) deptSel.value = r.sender_dept_id;
+    const userSel = document.getElementById('msg_user_sel');
+    if (userSel && r.sender_user_id) userSel.value = r.sender_user_id;
+    openModal('composeMsgModal');
+}
+</script>
+@endpush

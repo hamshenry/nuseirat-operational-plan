@@ -4,7 +4,7 @@
 @section('content')
 <div class="page-header">
     <div>
-        <h2 class="page-title">إدارة المستخدمين والصلاحيات</h2>
+        <h2 class="page-title">👥 إدارة المستخدمين والصلاحيات</h2>
         <p class="page-subtitle">إنشاء حسابات المشرفين والدوائر، إعادة تعيين كلمات المرور، وتفعيل تغيير كلمة المرور عند الدخول الأول</p>
     </div>
     <button type="button" class="btn btn-success" onclick="openModal('createUserModal')">➕ مستخدم جديد</button>
@@ -20,13 +20,25 @@
                 <th>الصلاحية</th>
                 <th>الدائرة</th>
                 <th class="text-center">حالة الحساب</th>
-                <th class="text-center">تغيير كلمة المرور</th>
+                <th class="text-center">كلمة المرور</th>
                 <th>آخر دخول</th>
                 <th class="text-center">الإجراءات</th>
             </tr>
             </thead>
             <tbody>
             @foreach($users as $u)
+                @php
+                    $userData = [
+                        'id' => $u->id,
+                        'username' => $u->username,
+                        'name' => $u->name,
+                        'role' => $u->role,
+                        'department_id' => $u->department_id,
+                        'email' => $u->email ?? '',
+                        'is_active' => (bool) $u->is_active,
+                        'must_change_password' => (bool) $u->must_change_password,
+                    ];
+                @endphp
                 <tr>
                     <td><code>{{ $u->username }}</code></td>
                     <td class="fw-bold">{{ $u->name }}</td>
@@ -34,19 +46,30 @@
                     <td>{{ $u->department?->name ?? 'الإدارة العليا' }}</td>
                     <td class="text-center">
                         <span class="badge {{ $u->is_active ? 'badge-success' : 'badge-danger' }}">{{ $u->is_active ? 'نشط' : 'معطّل' }}</span>
+                        @if($u->locked_until && $u->locked_until->isFuture())
+                            <span class="badge badge-danger">مجمّد مؤقتاً</span>
+                        @endif
                     </td>
                     <td class="text-center">
                         @if($u->must_change_password)
-                            <span class="badge badge-warning">مطلوب عند أول دخول</span>
+                            <span class="badge badge-warning">مطلوب تغييرها</span>
                         @else
-                            <span class="badge badge-secondary">تم التحديث</span>
+                            <span class="badge badge-secondary">محدّثة</span>
                         @endif
                     </td>
                     <td>{{ $u->last_login_at?->format('Y-m-d H:i') ?? 'لم يدخل بعد' }}</td>
                     <td class="text-center" style="white-space:nowrap;">
-                        <button type="button" class="btn btn-info btn-sm" onclick='openEditUser(@json($u))'>تعديل</button>
-                        <button type="button" class="btn btn-warning btn-sm" onclick="openResetPw({{ $u->id }}, @js($u->username))">تعيين كلمة مرور</button>
+                        <button type="button" class="btn btn-info btn-sm"
+                                data-json="{{ json_encode($userData, JSON_UNESCAPED_UNICODE) }}"
+                                onclick="openEditUser(this)">تعديل</button>
+                        <button type="button" class="btn btn-warning btn-sm"
+                                data-id="{{ $u->id }}" data-username="{{ $u->username }}"
+                                onclick="openResetPw(this)">كلمة مرور</button>
                         @if($u->id !== auth()->id())
+                            <form method="POST" action="{{ route('users.toggle_active', $u) }}" style="display:inline;">
+                                @csrf
+                                <button type="submit" class="btn btn-outline btn-sm">{{ $u->is_active ? 'تعطيل' : 'تفعيل' }}</button>
+                            </form>
                             <form method="POST" action="{{ route('users.destroy', $u) }}" style="display:inline;" onsubmit="return confirm('نقل المستخدم «{{ $u->username }}» إلى سلة المحذوفات؟');">
                                 @csrf @method('DELETE')
                                 <button type="submit" class="btn btn-soft-danger btn-sm">حذف</button>
@@ -203,7 +226,9 @@
 
 @push('scripts')
 <script>
-function openEditUser(u) {
+function openEditUser(btn) {
+    const u = parseBtnData(btn);
+    if (!u) return;
     document.getElementById('editUserForm').action = `/users/${u.id}`;
     document.getElementById('eu_username').value = u.username || '';
     document.getElementById('eu_name').value = u.name || '';
@@ -214,9 +239,9 @@ function openEditUser(u) {
     document.getElementById('eu_must').checked = !!u.must_change_password;
     openModal('editUserModal');
 }
-function openResetPw(id, uname) {
-    document.getElementById('rpw_user').textContent = uname;
-    document.getElementById('resetPwForm').action = `/users/${id}/reset-password`;
+function openResetPw(btn) {
+    document.getElementById('rpw_user').textContent = btn.dataset.username || '';
+    document.getElementById('resetPwForm').action = `/users/${btn.dataset.id}/reset-password`;
     openModal('resetPwModal');
 }
 </script>

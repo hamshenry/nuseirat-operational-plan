@@ -117,6 +117,7 @@ Route::middleware(['auth'])->group(function () {
             Route::post('/users', [UserController::class, 'store'])->name('users.store');
             Route::put('/users/{user}', [UserController::class, 'update'])->name('users.update');
             Route::post('/users/{user}/reset-password', [UserController::class, 'resetPassword'])->name('users.reset_password');
+            Route::post('/users/{user}/toggle-active', [UserController::class, 'toggleActive'])->name('users.toggle_active');
             Route::delete('/users/{user}', [UserController::class, 'destroy'])->name('users.destroy');
 
             // Strategic Hierarchy (Main Objectives -> Sub Objectives -> Programs)
@@ -149,6 +150,7 @@ Route::middleware(['auth'])->group(function () {
 
             // Recycle Bin (Trash & Restore)
             Route::get('/trash', [TrashController::class, 'index'])->name('trash.index');
+            Route::post('/trash/restore-all', [TrashController::class, 'restoreAll'])->name('trash.restore_all');
             Route::post('/trash/{type}/{id}/restore', [TrashController::class, 'restore'])->name('trash.restore');
             Route::delete('/trash/{type}/{id}/force', [TrashController::class, 'forceDelete'])->name('trash.force_delete');
 

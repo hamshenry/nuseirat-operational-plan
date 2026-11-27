@@ -74,7 +74,7 @@ class CollaborationController extends Controller
     {
         $user = Auth::user();
         $validated = $request->validate([
-            'recipient_department_id' => ['nullable', 'exists:departments,id'],
+            'recipient_department_id' => ['nullable', 'string'],
             'recipient_user_id' => ['nullable', 'exists:users,id'],
             'subject' => ['required', 'string', 'max:250'],
             'body' => ['required', 'string', 'max:5000'],
@@ -84,7 +84,33 @@ class CollaborationController extends Controller
             'body.required' => 'يرجى كتابة نص الرسالة.',
         ]);
 
-        $recipientDeptId = ($validated['recipient_department_id'] ?? null) ?: null;
+        // Support Admin broadcast to ALL departments
+        if ($user->isAdmin() && ($validated['recipient_department_id'] ?? '') === 'all') {
+            $depts = Department::all();
+            foreach ($depts as $dept) {
+                $msg = InternalMessage::create([
+                    'sender_id' => $user->id,
+                    'recipient_department_id' => $dept->id,
+                    'subject' => trim($validated['subject']),
+                    'body' => trim($validated['body']),
+                    'is_read' => false,
+                ]);
+                AuditService::notifyDepartment(
+                    $dept->id,
+                    'تعميم داخلي جديد من المشرف العام',
+                    "{$msg->subject}",
+                    'message',
+                    route('messages.index'),
+                    $user->id
+                );
+            }
+            AuditService::log('create', 'internal_message', null, 'تعميم لجميع الدوائر: ' . trim($validated['subject']));
+            return redirect()->route('messages.index', ['tab' => 'sent'])->with('success', "تم إرسال التعميم الداخلي إلى جميع الدوائر ({$depts->count()} دائرة) بنجاح.");
+        }
+
+        $recipientDeptId = is_numeric($validated['recipient_department_id'] ?? null)
+            ? (int) $validated['recipient_department_id']
+            : null;
         $recipientUserId = ($validated['recipient_user_id'] ?? null) ?: null;
 
         if (!$recipientDeptId && !$recipientUserId) {

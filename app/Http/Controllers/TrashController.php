@@ -93,6 +93,30 @@ class TrashController extends Controller
         return back()->with('success', 'تمت استعادة العنصر من سلة المحذوفات بنجاح.');
     }
 
+    public function restoreAll(Request $request): RedirectResponse
+    {
+        $type = (string) $request->input('type', 'all');
+        $restored = 0;
+        foreach (self::MODEL_MAP as $typeKey => [$modelClass]) {
+            if ($type !== 'all' && $type !== $typeKey) {
+                continue;
+            }
+            $records = $modelClass::onlyTrashed()->get();
+            foreach ($records as $rec) {
+                $rec->restore();
+                if ($typeKey === 'user') {
+                    $rec->update(['is_active' => true]);
+                }
+                if ($typeKey === 'activity') {
+                    AuditService::syncPlanStatus($rec->operational_plan_id);
+                }
+                $restored++;
+            }
+        }
+        AuditService::log('restore', $type, null, "استعادة جماعية ({$restored} عنصر)");
+        return back()->with('success', "تمت استعادة {$restored} عنصر من سلة المحذوفات بنجاح.");
+    }
+
     public function forceDelete(string $type, int $id): RedirectResponse
     {
         if (!isset(self::MODEL_MAP[$type])) {

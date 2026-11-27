@@ -9,7 +9,7 @@
     </div>
     <div class="actions-row">
         @if(auth()->user()->isAdmin())
-            <button type="button" class="btn btn-success" onclick="openModal('budgetModal')">➕ تخصيص / تعديل موازنة دائرة</button>
+            <button type="button" class="btn btn-success" onclick="openBudgetModalNew()">➕ تخصيص / تعديل موازنة دائرة</button>
         @endif
         <a href="{{ route('reports.excel', 'budgets') }}" class="btn btn-primary">📥 تصدير Excel</a>
         <a href="{{ route('reports.pdf', 'budgets') }}" class="btn btn-outline">📄 تصدير PDF</a>
@@ -51,10 +51,11 @@
                 <th class="text-center">ذاتي</th>
                 <th class="text-center">منح ومشاريع</th>
                 <th class="text-center">خارجي</th>
-                <th class="text-center">التكلفة المخططة</th>
+                <th class="text-center">المخطط للأنشطة</th>
                 <th class="text-center">الصرف الفعلي</th>
                 <th class="text-center">المتبقي</th>
-                <th class="text-center">حالة السقف المالي</th>
+                <th class="text-center">الحالة</th>
+                @if(auth()->user()->isAdmin())<th class="text-center">إجراء</th>@endif
             </tr>
             </thead>
             <tbody>
@@ -63,6 +64,13 @@
                     $al = $allocations->get($e['department']->id);
                     $rem = $e['allocated_budget'] - $e['actual_spent'];
                     $overPlanned = $e['allocated_budget'] > 0 && $e['planned_cost'] > $e['allocated_budget'];
+                    $bData = [
+                        'department_id' => $e['department']->id,
+                        'self_funded' => (float) ($al?->self_funded ?? 0),
+                        'grants_funded' => (float) ($al?->grants_funded ?? 0),
+                        'external_funded' => (float) ($al?->external_funded ?? 0),
+                        'notes' => $al?->notes ?? '',
+                    ];
                 @endphp
                 <tr>
                     <td class="fw-bold">{{ $e['department']->name }}</td>
@@ -75,13 +83,26 @@
                     <td class="text-center fw-bold" style="color:{{ $rem < 0 ? '#dc2626' : '#0f3644' }};">{{ number_format($rem, 2) }}</td>
                     <td class="text-center">
                         @if($overPlanned)
-                            <span class="badge badge-danger">⚠️ تجاوز السقف المخطط</span>
+                            <span class="badge badge-danger">⚠️ تجاوز السقف</span>
                         @elseif($e['allocated_budget'] == 0)
                             <span class="badge badge-secondary">غير مخصص</span>
                         @else
-                            <span class="badge badge-success">ضمن السقف المعتمد</span>
+                            <span class="badge badge-success">ضمن السقف</span>
                         @endif
                     </td>
+                    @if(auth()->user()->isAdmin())
+                        <td class="text-center" style="white-space:nowrap;">
+                            <button type="button" class="btn btn-info btn-sm"
+                                    data-json="{{ json_encode($bData, JSON_UNESCAPED_UNICODE) }}"
+                                    onclick="openEditBudget(this)">تعديل</button>
+                            @if($al)
+                                <form method="POST" action="{{ route('budgets.destroy', $al) }}" style="display:inline;" onsubmit="return confirm('نقل مخصص الموازنة إلى سلة المحذوفات؟');">
+                                    @csrf @method('DELETE')
+                                    <button type="submit" class="btn btn-soft-danger btn-sm">حذف</button>
+                                </form>
+                            @endif
+                        </td>
+                    @endif
                 </tr>
             @endforeach
             </tbody>
@@ -118,28 +139,34 @@
 @if(auth()->user()->isAdmin())
 <div class="modal-backdrop" id="budgetModal">
     <div class="modal-box">
-        <div class="modal-header"><h3 class="modal-title">تخصيص / تعديل موازنة دائرة ({{ $year->year }})</h3><button class="modal-close" onclick="closeModal('budgetModal')">&times;</button></div>
+        <div class="modal-header"><h3 class="modal-title">تخصيص / تعديل موازنة دائرة ({{ $year->year }})</h3><button type="button" class="modal-close" onclick="closeModal('budgetModal')">&times;</button></div>
         <div class="modal-body">
             <form method="POST" action="{{ route('budgets.store') }}">
                 @csrf
                 <div class="form-group">
                     <label class="form-label">الدائرة *</label>
-                    <select name="department_id" class="form-select" required>
+                    <select name="department_id" id="bm_dept" class="form-select" required>
                         @foreach($departments as $d)
                             <option value="{{ $d->id }}">{{ $d->code }} — {{ $d->name }}</option>
                         @endforeach
                     </select>
                 </div>
                 <div class="form-grid-3">
-                    <div class="form-group"><label class="form-label">تمويل ذاتي (شيكل)</label><input type="number" step="0.01" min="0" name="self_funded" class="form-control" required value="0"></div>
-                    <div class="form-group"><label class="form-label">منح ومشاريع (شيكل)</label><input type="number" step="0.01" min="0" name="grants_funded" class="form-control" required value="0"></div>
-                    <div class="form-group"><label class="form-label">تمويل خارجي (شيكل)</label><input type="number" step="0.01" min="0" name="external_funded" class="form-control" required value="0"></div>
+                    <div class="form-group"><label class="form-label">تمويل ذاتي (شيكل)</label><input type="number" step="0.01" min="0" name="self_funded" id="bm_self" class="form-control" required value="0" oninput="updateBudgetTotal()"></div>
+                    <div class="form-group"><label class="form-label">منح ومشاريع (شيكل)</label><input type="number" step="0.01" min="0" name="grants_funded" id="bm_grants" class="form-control" required value="0" oninput="updateBudgetTotal()"></div>
+                    <div class="form-group"><label class="form-label">تمويل خارجي (شيكل)</label><input type="number" step="0.01" min="0" name="external_funded" id="bm_ext" class="form-control" required value="0" oninput="updateBudgetTotal()"></div>
+                </div>
+                <div style="background:#f0fdf4;border:1px solid #bbf7d0;padding:10px 14px;border-radius:9px;margin-bottom:12px;font-weight:800;color:#166534;">
+                    إجمالي الموازنة المعتمدة: <span id="bm_total">0.00</span> شيكل
                 </div>
                 <div class="form-group">
                     <label class="form-label">ملاحظات مالية</label>
-                    <textarea name="notes" class="form-control"></textarea>
+                    <textarea name="notes" id="bm_notes" class="form-control"></textarea>
                 </div>
-                <button type="submit" class="btn btn-success">حفظ الموازنة المعتمدة</button>
+                <div class="actions-row">
+                    <button type="submit" class="btn btn-success">حفظ الموازنة المعتمدة</button>
+                    <button type="button" class="btn btn-outline" onclick="closeModal('budgetModal')">إلغاء</button>
+                </div>
             </form>
         </div>
     </div>
@@ -149,6 +176,32 @@
 
 @push('scripts')
 <script>
+function updateBudgetTotal() {
+    const s = parseFloat(document.getElementById('bm_self')?.value || 0) || 0;
+    const g = parseFloat(document.getElementById('bm_grants')?.value || 0) || 0;
+    const e = parseFloat(document.getElementById('bm_ext')?.value || 0) || 0;
+    const el = document.getElementById('bm_total');
+    if (el) el.textContent = (s + g + e).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function openBudgetModalNew() {
+    document.getElementById('bm_self').value = 0;
+    document.getElementById('bm_grants').value = 0;
+    document.getElementById('bm_ext').value = 0;
+    document.getElementById('bm_notes').value = '';
+    updateBudgetTotal();
+    openModal('budgetModal');
+}
+function openEditBudget(btn) {
+    const d = parseBtnData(btn);
+    if (!d) return;
+    document.getElementById('bm_dept').value = d.department_id;
+    document.getElementById('bm_self').value = d.self_funded;
+    document.getElementById('bm_grants').value = d.grants_funded;
+    document.getElementById('bm_ext').value = d.external_funded;
+    document.getElementById('bm_notes').value = d.notes || '';
+    updateBudgetTotal();
+    openModal('budgetModal');
+}
 document.addEventListener('DOMContentLoaded', function () {
     if (typeof Chart === 'undefined') return;
     const d = @json($chartData);

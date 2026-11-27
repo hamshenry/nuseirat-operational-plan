@@ -126,6 +126,13 @@
                         {{ $globalEntryOpen ? 'فترة الإدخال مفتوحة' : 'فترة الإدخال مغلقة' }}
                     </span>
                 @endif
+
+                <!-- Quick Global Activity Search -->
+                <form method="GET" action="{{ route('activities.index') }}" style="display:flex;align-items:center;">
+                    <input type="text" name="q" value="{{ request()->routeIs('activities.index') ? request('q') : '' }}"
+                           class="form-control" style="padding:5px 11px;width:210px;font-size:12.5px;border-radius:999px;background:var(--surface-soft);"
+                           placeholder="🔍 بحث سريع في الأنشطة...">
+                </form>
             </div>
 
             <div class="topbar-left">
@@ -180,16 +187,19 @@
             @if(session('success'))
                 <div class="alert alert-success">
                     <span>✅ {{ session('success') }}</span>
+                    <button type="button" onclick="this.parentElement.remove()" style="background:none;border:none;cursor:pointer;font-size:18px;color:inherit;line-height:1;">&times;</button>
                 </div>
             @endif
             @if(session('error'))
                 <div class="alert alert-danger">
                     <span>⛔ {{ session('error') }}</span>
+                    <button type="button" onclick="this.parentElement.remove()" style="background:none;border:none;cursor:pointer;font-size:18px;color:inherit;line-height:1;">&times;</button>
                 </div>
             @endif
             @if(session('warning'))
                 <div class="alert alert-warning">
                     <span>⚠️ {{ session('warning') }}</span>
+                    <button type="button" onclick="this.parentElement.remove()" style="background:none;border:none;cursor:pointer;font-size:18px;color:inherit;line-height:1;">&times;</button>
                 </div>
             @endif
             @if($errors->any())

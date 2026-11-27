@@ -152,7 +152,7 @@
     <div class="card">
         <div class="card-header">
             <h3 class="card-title">قائمة الأنشطة ({{ $activities->count() }} نشاط — إجمالي التكلفة: {{ number_format((float)$activities->sum('estimated_cost'), 2) }} شيكل)</h3>
-            <span class="text-muted" style="font-size:12.5px;">حدد أكثر من نشاط لتفعيل شريط الاعتماد والإجراءات الجماعية</span>
+            <span class="text-muted" style="font-size:12.5px;">حدد نشاطاً أو أكثر لتفعيل شريط الاعتماد والإجراءات الجماعية</span>
         </div>
         <div class="table-wrap">
             <table class="data-table" style="font-size:12.5px;">
@@ -169,7 +169,7 @@
                     <th class="text-center">الأرباع</th>
                     <th class="text-center">الأهمية والتكلفة</th>
                     <th class="text-center">الحالة</th>
-                    <th class="text-center">الإجراءات</th>
+                    <th class="text-center sticky-action">الإجراءات</th>
                 </tr>
                 </thead>
                 <tbody>
@@ -224,19 +224,26 @@
                             <span class="badge {{ $act->statusBadgeClass() }}">{{ $act->statusLabel() }}</span>
                             <div style="font-size:11px;color:#059669;margin-top:3px;">إنجاز: {{ $act->latestProgress() }}%</div>
                         </td>
-                        <td class="text-center" style="white-space:nowrap;">
+                        <td class="text-center sticky-action" style="white-space:nowrap;">
                             <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center;">
                                 <a href="{{ route('activities.show', $act) }}" class="btn btn-outline btn-sm">تفاصيل</a>
                                 @if(auth()->user()->isAdmin() || ($entryOpen && $act->status !== 'approved'))
                                     <a href="{{ route('activities.edit', $act) }}" class="btn btn-info btn-sm">تعديل</a>
                                 @endif
+                                @if(in_array($act->status, ['draft', 'rejected']) && ($entryOpen || auth()->user()->isAdmin()))
+                                    <button type="button" class="btn btn-warning btn-sm"
+                                            data-url="{{ route('activities.submit', $act) }}"
+                                            onclick="submitSinglePost(this.dataset.url)">إرسال</button>
+                                @endif
                                 @if(auth()->user()->isAdmin() && $act->status !== 'approved')
                                     <button type="button" class="btn btn-success btn-sm"
-                                            onclick="openSingleApprove({{ $act->id }}, @js($act->activity_code))">اعتماد</button>
+                                            data-id="{{ $act->id }}" data-code="{{ $act->activity_code }}"
+                                            onclick="openSingleApprove(this)">اعتماد</button>
                                 @endif
                                 @if(auth()->user()->isAdmin() && $act->status !== 'rejected')
                                     <button type="button" class="btn btn-danger btn-sm"
-                                            onclick="openSingleReject({{ $act->id }}, @js($act->activity_code))">رفض</button>
+                                            data-id="{{ $act->id }}" data-code="{{ $act->activity_code }}"
+                                            onclick="openSingleReject(this)">رفض</button>
                                 @endif
                             </div>
                         </td>
@@ -256,20 +263,43 @@
         </div>
         <div class="actions-row">
             @if(auth()->user()->isAdmin())
-                <button type="button" class="btn btn-success btn-sm" onclick="submitBatchForm('approve')">✅ اعتماد المحدد دفعة واحدة</button>
-                <button type="button" class="btn btn-danger btn-sm" onclick="submitBatchForm('reject')">❌ رفض المحدد مع بيان السبب</button>
+                <button type="button" class="btn btn-success btn-sm" onclick="openBatchModal('approve')">✅ اعتماد المحدد دفعة واحدة</button>
+                <button type="button" class="btn btn-danger btn-sm" onclick="openBatchModal('reject')">❌ رفض المحدد مع بيان السبب</button>
             @endif
-            <button type="button" class="btn btn-warning btn-sm" onclick="submitBatchForm('submit')">📤 إرسال المحدد للمراجعة</button>
-            <button type="button" class="btn btn-soft-danger btn-sm" onclick="submitBatchForm('delete')">🗑️ نقل لسلة المحذوفات</button>
+            <button type="button" class="btn btn-warning btn-sm" onclick="openBatchModal('submit')">📤 إرسال المحدد للمراجعة</button>
+            <button type="button" class="btn btn-soft-danger btn-sm" onclick="openBatchModal('delete')">🗑️ نقل لسلة المحذوفات</button>
         </div>
     </div>
 </form>
+
+<!-- Hidden helper form for single row POST submit (avoids nested forms) -->
+<form method="POST" id="singlePostHelperForm" style="display:none;">@csrf</form>
+
+<!-- Batch Decision Modal -->
+<div class="modal-backdrop" id="batchDecisionModal">
+    <div class="modal-box" style="max-width:520px;">
+        <div class="modal-header">
+            <h3 class="modal-title" id="batchModalTitle">إجراء جماعي</h3>
+            <button type="button" class="modal-close" onclick="closeModal('batchDecisionModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label class="form-label" id="batchModalLabel">الملاحظة / السبب</label>
+                <textarea id="batchModalTextarea" class="form-control" style="min-height:95px;"></textarea>
+            </div>
+            <div class="actions-row">
+                <button type="button" id="batchModalConfirmBtn" class="btn btn-success" onclick="confirmBatchModal()">تأكيد</button>
+                <button type="button" class="btn btn-outline" onclick="closeModal('batchDecisionModal')">إلغاء</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- Single Approve Modal -->
 <div class="modal-backdrop" id="singleApproveModal">
     <div class="modal-box" style="max-width:480px;">
         <div class="modal-header">
-            <h3 class="modal-title">اعتماد النشاط <span id="approveCodeLabel"></span></h3>
+            <h3 class="modal-title">✅ اعتماد النشاط <span id="approveCodeLabel"></span></h3>
             <button type="button" class="modal-close" onclick="closeModal('singleApproveModal')">&times;</button>
         </div>
         <div class="modal-body">
@@ -292,7 +322,7 @@
 <div class="modal-backdrop" id="singleRejectModal">
     <div class="modal-box" style="max-width:500px;">
         <div class="modal-header">
-            <h3 class="modal-title">رفض النشاط <span id="rejectCodeLabel"></span> مع بيان السبب</h3>
+            <h3 class="modal-title">❌ رفض النشاط <span id="rejectCodeLabel"></span> مع بيان السبب</h3>
             <button type="button" class="modal-close" onclick="closeModal('singleRejectModal')">&times;</button>
         </div>
         <div class="modal-body">
@@ -314,15 +344,20 @@
 
 @push('scripts')
 <script>
-function openSingleApprove(id, code) {
-    document.getElementById('approveCodeLabel').textContent = code;
-    document.getElementById('singleApproveForm').action = `/activities/${id}/approve`;
+function openSingleApprove(btn) {
+    document.getElementById('approveCodeLabel').textContent = btn.dataset.code || '';
+    document.getElementById('singleApproveForm').action = `/activities/${btn.dataset.id}/approve`;
     openModal('singleApproveModal');
 }
-function openSingleReject(id, code) {
-    document.getElementById('rejectCodeLabel').textContent = code;
-    document.getElementById('singleRejectForm').action = `/activities/${id}/reject`;
+function openSingleReject(btn) {
+    document.getElementById('rejectCodeLabel').textContent = btn.dataset.code || '';
+    document.getElementById('singleRejectForm').action = `/activities/${btn.dataset.id}/reject`;
     openModal('singleRejectModal');
+}
+function submitSinglePost(url) {
+    const f = document.getElementById('singlePostHelperForm');
+    f.action = url;
+    f.submit();
 }
 document.addEventListener('DOMContentLoaded', () => {
     const mainVal = @json(request('main_objective_id'));
